@@ -1,58 +1,54 @@
-// One Line to Your Younger Self — make.fun entry by @bosbuilds.
-//
-// The bounty asks for a single line, in English, that the entrant would
-// send back to their younger self if one line were all they got: no
-// explanation, no context, no second sentence. This program writes that
-// line, and only that line, to /output/entry.txt.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 
-const ENTRY_TEXT =
-  "Buy the domain, skip the meeting, and call Mom before the group chat does.";
+const MESSAGE = "She will marry the man who sent the text you keep rewriting.";
+const OUT_PATH = "/output/entry.txt";
+const OUT_DIR = "/output";
 
-const OUTPUT_DIR = "/output";
-const OUTPUT_PATH = OUTPUT_DIR + "/entry.txt";
+function measureUtf8(text: string): number {
+  return new TextEncoder().encode(text).byteLength;
+}
 
-// The sealed scorer accepts only UTF-8 text of 1 to 200 characters that
-// is not only whitespace, and the bounty brief demands a single line
-// with no second sentence. Refuse to write anything that would fail:
-// an invalid entry scores 0 and takes no prize.
-function validateEntry(text: string): void {
-  const problems: string[] = [];
-  if (text.length < 1 || text.length > 200) {
-    problems.push(`length ${text.length} is outside 1..200`);
+function countSentenceEnds(text: string): number {
+  let hits = 0;
+  for (const ch of text) {
+    if (ch === "." || ch === "!" || ch === "?") hits += 1;
   }
+  return hits;
+}
+
+function assertGate(text: string): void {
   if (text.trim().length === 0) {
-    problems.push("entry is only whitespace");
+    throw new Error("whitespace-only payload rejected");
   }
-  if (/[\r\n]/.test(text)) {
-    problems.push("entry spans more than one line");
+  if (text.includes("\n") || text.includes("\r")) {
+    throw new Error("payload must be a single line");
   }
-  const sentenceEnds = text.match(/[.!?]+/g) ?? [];
-  if (sentenceEnds.length !== 1 || !/[.!?]$/.test(text)) {
-    problems.push("entry is not exactly one sentence");
+  const chars = [...text].length;
+  if (chars < 1 || chars > 200) {
+    throw new Error("payload length out of gate range");
   }
-  if (problems.length > 0) {
-    throw new Error("invalid entry: " + problems.join("; "));
+  if (countSentenceEnds(text) !== 1) {
+    throw new Error("payload must hold exactly one sentence");
+  }
+  const tail = text[text.length - 1];
+  if (tail !== "." && tail !== "!" && tail !== "?") {
+    throw new Error("payload must end with sentence punctuation");
   }
 }
 
-validateEntry(ENTRY_TEXT);
-
-mkdirSync(OUTPUT_DIR, { recursive: true });
-writeFileSync(OUTPUT_PATH, ENTRY_TEXT, "utf8");
-
-// Verify what actually landed on disk: the file must hold the line
-// exactly — same characters, same order, no trailing newline, no BOM,
-// nothing appended. The judge reads this file, so any drift here is
-// the entry itself drifting.
-const onDisk = readFileSync(OUTPUT_PATH, "utf8");
-if (onDisk !== ENTRY_TEXT) {
-  throw new Error(
-    `entry.txt mismatch: wrote ${ENTRY_TEXT.length} chars, ` +
-      `read back ${onDisk.length} chars`,
-  );
+async function emitLine(line: string): Promise<void> {
+  await mkdir(OUT_DIR, { recursive: true });
+  await writeFile(OUT_PATH, line, "utf8");
 }
-const byteCount = Buffer.byteLength(onDisk, "utf8");
-if (byteCount !== Buffer.byteLength(ENTRY_TEXT, "utf8")) {
-  throw new Error("entry.txt byte length does not match the entry text");
+
+async function main(): Promise<void> {
+  const payload = MESSAGE;
+  assertGate(payload);
+  const size = measureUtf8(payload);
+  if (size === 0) {
+    throw new Error("empty payload");
+  }
+  await emitLine(payload);
 }
+
+await main();
